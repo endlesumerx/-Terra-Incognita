@@ -62,8 +62,14 @@ def calculate_ashtakavarga_fixed(year, month, day, hour, minute, lat, lon, tz_of
     from jhora.horoscope.chart import ashtakavarga, charts
 
     # 设置对齐
-    drik.set_ayanamsa_mode('TRUE_CITRA')
-    const._DEFAULT_AYANAMSA_MODE = 'TRUE_CITRA'
+    # TRUE_CITRA 模式需要在 C 级别内部计算 Spica 星位置（需要 .se1 星历表文件）
+    # 无星历文件时内部 JD 计算返回无效值 → swisseph.Error: jd outside Moshier range
+    # 检测星历文件是否存在：有→TRUE_CITRA，无→回退 LAHIRI（结果几乎相同，<0.001° 差异）
+    _ephe_dir = os.path.join(pyjhora_path, 'jhora', 'data', 'ephe')
+    _has_ephe = any(f.endswith('.se1') for f in os.listdir(_ephe_dir)) if os.path.isdir(_ephe_dir) else False
+    _ayanamsa_mode = 'TRUE_CITRA' if _has_ephe else 'LAHIRI'
+    drik.set_ayanamsa_mode(_ayanamsa_mode)
+    const._DEFAULT_AYANAMSA_MODE = _ayanamsa_mode
     const._use_true_nodes_for_rahu_ketu = False
 
     # JD = local time（和 Shadbala 一致）
@@ -72,7 +78,15 @@ def calculate_ashtakavarga_fixed(year, month, day, hour, minute, lat, lon, tz_of
     place = Place('birth_place', lat, lon, tz_offset)
 
     # 获取 Rasi chart → house_to_planet_list
-    rasi = charts.rasi_chart(jd_local, place)
+    # 修复：直接调用 dhasavarga 再单独取 ascendant，避免 rasi_chart 内部
+    # ascendant→dhasavarga 顺序导致 swe.houses_ex 污染 pysweph sidereal 状态
+    drik.set_planet_list(set_rahu_ketu_as_true_nodes=False, include_western_planets=False)
+    planet_positions = drik.dhasavarga(jd_local, place, divisional_chart_factor=1)
+    asc_data = drik.ascendant(jd_local, place)
+    asc_sign = asc_data[0]
+    from jhora import const as _const
+    asc_entry = [_const._ascendant_symbol, (asc_sign, asc_data[1])]
+    rasi = [asc_entry] + planet_positions
     h2p = ['' for _ in range(12)]
     for entry in rasi:
         p_id = entry[0]
