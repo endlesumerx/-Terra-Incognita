@@ -1,5 +1,4 @@
 .claude/commands/venv/
-.claude/commands/vedic-calculator-scripts/__pycache__/
-__pycache__/
+**/__pycache__/
 *.pyc
 *.pyo
